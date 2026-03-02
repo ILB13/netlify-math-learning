@@ -14,23 +14,18 @@
   status = 200
 
 [[redirects]]
-  from = "/libcurl/*"
-  to = "/libcurl/:splat"
-  status = 200
-
-[[redirects]]
   from = "/baremux/*"
   to = "/baremux/:splat"
   status = 200
 
-# ✅ Proxy your API ping (POST will work)
+# Proxy your presence API through the Netlify function
 [[redirects]]
   from = "/presence/*"
-  to = "/functions/proxy?path=presence/:splat"
+  to = "/.netlify/functions/proxy?path=presence/:splat"
   status = 200
   force = true
 
-# ✅ SPA fallback (so deep links load index.html)
+# SPA fallback (so deep links load index.html)
 [[redirects]]
   from = "/*"
   to = "/index.html"
