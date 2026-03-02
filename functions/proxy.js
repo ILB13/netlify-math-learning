@@ -20,26 +20,27 @@ async function getUpstreamBase() {
   }
 
   const base = (await res.text()).trim().replace(/\/+$/, "");
-
-  // IMPORTANT: do NOT enforce https here – link.txt might return http://
-  // We'll just trust whatever it gives us.
+  // Don't force https – link.txt may return http://
   cachedBase = base;
   cachedAt = now;
   return base;
 }
+
+// Extensions that we should NOT stream through the function (too big)
+const LARGE_BINARY_EXT = /\.(data|wasm|dll|pdb|bin)$/i;
 
 /**
  * Netlify function handler (CommonJS export).
  *
  * netlify.toml redirects all non-Scramjet paths:
  *   /* -> /.netlify/functions/proxy
- * so event.path is the original URL path (/, /celeste/_framework/data/..., etc).
  */
 exports.handler = async function (event) {
   try {
     const upstreamBase = await getUpstreamBase();
 
-    // Original requested path on the site, e.g. "/", "/celeste/_framework/data/dataaa.data"
+    // Original requested path on the site, e.g. "/",
+    // "/celeste/_framework/data/dataaa.data", etc.
     const path = event.path || "/";
 
     // Rebuild query string from Netlify's queryStringParameters
@@ -52,6 +53,25 @@ exports.handler = async function (event) {
 
     const upstreamUrl =
       upstreamBase + path + (queryString ? `?${queryString}` : "");
+
+    // --- 1) BIG BINARY ASSETS -> REDIRECT, **DON'T** STREAM THROUGH FUNCTION ---
+
+    if (
+      path.startsWith("/celeste/") || // Celeste game assets
+      LARGE_BINARY_EXT.test(path)     // any *.data, *.wasm, etc
+    ) {
+      return {
+        statusCode: 302,
+        headers: {
+          Location: upstreamUrl,
+          // Avoid caching in case the tunnel URL changes
+          "cache-control": "no-store, max-age=0",
+        },
+        body: "",
+      };
+    }
+
+    // --- 2) EVERYTHING ELSE -> NORMAL PROXY THROUGH FUNCTION ---
 
     // Copy incoming headers but strip hop-by-hop / Netlify-specific ones
     const headers = { ...(event.headers || {}) };
@@ -93,11 +113,10 @@ exports.handler = async function (event) {
     // Avoid cached tunnel responses
     respHeaders["cache-control"] = "no-store, max-age=0";
 
-    // Read response body as raw bytes
+    // Read response body as raw bytes, then send as base64.
     const arrayBuffer = await resp.arrayBuffer();
     const buf = Buffer.from(arrayBuffer);
 
-    // Always return as base64 so we never corrupt wasm/.data/etc.
     return {
       statusCode: resp.status,
       headers: respHeaders,
