@@ -2,31 +2,36 @@
   publish = "."
   functions = "functions"
 
-# Scramjet static passthrough
+# --- Scramjet static passthrough ---
+
+# /scramjet/* is served directly from the scramjet folder
 [[redirects]]
   from = "/scramjet/*"
-  to = "/scramjet/:splat"
+  to   = "/scramjet/:splat"
   status = 200
 
+# /scram/* -> physical /scramjet/scram/*
 [[redirects]]
   from = "/scram/*"
-  to = "/scram/:splat"
+  to   = "/scramjet/scram/:splat"
   status = 200
 
+# /baremux/* -> physical /scramjet/baremux/*
 [[redirects]]
   from = "/baremux/*"
-  to = "/baremux/:splat"
+  to   = "/scramjet/baremux/:splat"
   status = 200
 
-# Proxy your presence API through the Netlify function
+# /libcurl/* -> physical /scramjet/libcurl/*
 [[redirects]]
-  from = "/presence/*"
-  to = "/.netlify/functions/proxy?path=presence/:splat"
+  from = "/libcurl/*"
+  to   = "/scramjet/libcurl/:splat"
   status = 200
-  force = true
 
-# SPA fallback (so deep links load index.html)
+# --- Everything else gets proxied to the tunnel via the function ---
+
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to   = "/.netlify/functions/proxy"
   status = 200
+  force = true
