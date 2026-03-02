@@ -2,7 +2,7 @@
   publish = "."
   functions = "functions"
 
-# Let these folders be served as static files (same idea as context.next()).
+# Scramjet static passthrough
 [[redirects]]
   from = "/scramjet/*"
   to = "/scramjet/:splat"
@@ -23,8 +23,15 @@
   to = "/baremux/:splat"
   status = 200
 
-# Catch-all: send everything else to the proxy function.
+# ✅ Proxy your API ping (POST will work)
+[[redirects]]
+  from = "/presence/*"
+  to = "/.netlify/functions/proxy?path=presence/:splat"
+  status = 200
+  force = true
+
+# ✅ SPA fallback (so deep links load index.html)
 [[redirects]]
   from = "/*"
-  to = "/.netlify/functions/proxy?path=:splat"
+  to = "/index.html"
   status = 200
