@@ -52,35 +52,31 @@ function isTextLike(contentType) {
 }
 
 /**
- * Netlify function handler (CommonJS style export).
+ * Netlify function handler (CommonJS export).
  *
- * This is called via the redirect:
- *   /presence/*  ->  /.netlify/functions/proxy?path=presence/:splat
+ * netlify.toml redirects all non-Scramjet paths:
+ *   /* -> /.netlify/functions/proxy
+ * so event.path is the original URL path (/, /presence/..., etc)
  */
 exports.handler = async function (event) {
   try {
     const upstreamBase = await getUpstreamBase();
 
-    // Pull out the "path" we want to proxy to from the query string
-    const qs = event.queryStringParameters || {};
-    const { path: pathParam, ...restParams } = qs;
+    // Original requested path on the site, e.g. "/", "/presence/ping"
+    const path = event.path || "/";
 
-    let upstreamPath = pathParam || "/";
-    if (!upstreamPath.startsWith("/")) {
-      upstreamPath = "/" + upstreamPath;
-    }
-
-    // Rebuild remaining query string (excluding the "path" helper param)
+    // Rebuild query string from Netlify's queryStringParameters
+    const params = event.queryStringParameters || {};
     const searchParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(restParams)) {
+    for (const [key, value] of Object.entries(params)) {
       if (value != null) searchParams.append(key, value);
     }
     const queryString = searchParams.toString();
 
     const upstreamUrl =
-      upstreamBase + upstreamPath + (queryString ? `?${queryString}` : "");
+      upstreamBase + path + (queryString ? `?${queryString}` : "");
 
-    // Copy incoming headers, but strip hop-by-hop / Netlify-specific ones
+    // Copy incoming headers but strip hop-by-hop / Netlify-specific ones
     const headers = { ...(event.headers || {}) };
     delete headers.host;
     delete headers["x-forwarded-for"];
