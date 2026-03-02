@@ -1,68 +1,104 @@
+// functions/proxy.js
+
+// URL that returns the current tunnel base URL (same as Cloudflare version)
 const LINK_TXT = "http://cloudflarelink.duckdns.org:8787/link.txt";
+
 let cachedBase = null;
 let cachedAt = 0;
 const CACHE_MS = 10_000;
 
+/**
+ * Fetch and cache the upstream base URL (from link.txt).
+ */
 async function getUpstreamBase() {
   const now = Date.now();
   if (cachedBase && now - cachedAt < CACHE_MS) return cachedBase;
 
-  const r = await fetch(LINK_TXT);
-  if (!r.ok) throw new Error("Failed to fetch link.txt");
+  const res = await fetch(LINK_TXT);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch link.txt: ${res.status} ${res.statusText}`);
+  }
 
-  const base = (await r.text()).trim().replace(/\/+$/, "");
-  if (!base.startsWith("https://")) throw new Error("Invalid app tunnel URL");
+  const base = (await res.text()).trim().replace(/\/+$/, "");
+  if (!base.startsWith("https://")) {
+    throw new Error("Invalid app tunnel URL");
+  }
 
   cachedBase = base;
   cachedAt = now;
   return base;
 }
 
-function isTextLike(contentType = "") {
-  const ct = contentType.toLowerCase();
-  return (
-    ct.startsWith("text/") ||
-    ct.includes("json") ||
-    ct.includes("javascript") ||
-    ct.includes("xml") ||
-    ct.includes("svg")
-  );
+/**
+ * Very simple "is this probably text" check based on Content-Type.
+ * Helps decide whether to return utf8 or base64 from the function.
+ */
+function isTextLike(contentType) {
+  if (!contentType) return false;
+  contentType = contentType.toLowerCase();
+
+  if (contentType.startsWith("text/")) return true;
+
+  const textTypes = [
+    "application/json",
+    "application/javascript",
+    "application/x-javascript",
+    "application/xml",
+    "application/x-www-form-urlencoded",
+    "image/svg+xml",
+  ];
+
+  return textTypes.some((t) => contentType.startsWith(t));
 }
 
-export async function handler(event) {
+/**
+ * Netlify function handler (CommonJS style export).
+ *
+ * This is called via the redirect:
+ *   /presence/*  ->  /.netlify/functions/proxy?path=presence/:splat
+ */
+exports.handler = async function (event) {
   try {
-    // We pass original path via redirect query ?path=:splat
-    const pathParam = event.queryStringParameters?.path ?? "";
-    const origPath = "/" + pathParam.replace(/^\/+/, "");
-
-    // Keep original querystring except our injected "path" param.
-    // Netlify provides rawQuery like: "path=a/b&x=1"
-    const rawQuery = event.rawQuery || "";
-    const qs = rawQuery
-      ? "?" +
-        rawQuery
-          .split("&")
-          .filter((p) => !p.startsWith("path="))
-          .join("&")
-      : "";
-
     const upstreamBase = await getUpstreamBase();
-    const upstreamUrl = upstreamBase + origPath + qs;
 
-    // Clone request headers; remove hop-by-hop/host
-    const headers = { ...event.headers };
+    // Pull out the "path" we want to proxy to from the query string
+    const qs = event.queryStringParameters || {};
+    const { path: pathParam, ...restParams } = qs;
+
+    let upstreamPath = pathParam || "/";
+    if (!upstreamPath.startsWith("/")) {
+      upstreamPath = "/" + upstreamPath;
+    }
+
+    // Rebuild remaining query string (excluding the "path" helper param)
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(restParams)) {
+      if (value != null) searchParams.append(key, value);
+    }
+    const queryString = searchParams.toString();
+
+    const upstreamUrl =
+      upstreamBase + upstreamPath + (queryString ? `?${queryString}` : "");
+
+    // Copy incoming headers, but strip hop-by-hop / Netlify-specific ones
+    const headers = { ...(event.headers || {}) };
     delete headers.host;
+    delete headers["x-forwarded-for"];
+    delete headers["x-forwarded-host"];
+    delete headers["x-forwarded-proto"];
+    delete headers["x-nf-client-connection-ip"];
 
-    // Body handling
-    let body;
+    // Prepare body (handle base64-encoded body from Netlify)
+    let body = undefined;
     if (event.httpMethod !== "GET" && event.httpMethod !== "HEAD") {
-      if (event.isBase64Encoded) {
-        body = Buffer.from(event.body || "", "base64");
-      } else {
-        body = event.body;
+      if (event.body) {
+        body = event.isBase64Encoded
+          ? Buffer.from(event.body, "base64")
+          : event.body;
       }
     }
 
+    // Proxy the request to the upstream
     const resp = await fetch(upstreamUrl, {
       method: event.httpMethod,
       headers,
@@ -70,14 +106,22 @@ export async function handler(event) {
       redirect: "manual",
     });
 
-    const respHeaders = Object.fromEntries(resp.headers.entries());
+    // Copy response headers
+    const respHeaders = {};
+    resp.headers.forEach((value, key) => {
+      respHeaders[key] = value;
+    });
+
+    // Avoid cached tunnel responses
     respHeaders["cache-control"] = "no-store, max-age=0";
 
     const contentType = resp.headers.get("content-type") || "";
-    const buf = Buffer.from(await resp.arrayBuffer());
-
-    // Return binary as base64 when needed (wasm, images, etc.)
     const textLike = isTextLike(contentType);
+
+    // Read response body
+    const arrayBuffer = await resp.arrayBuffer();
+    const buf = Buffer.from(arrayBuffer);
+
     return {
       statusCode: resp.status,
       headers: respHeaders,
@@ -85,6 +129,9 @@ export async function handler(event) {
       isBase64Encoded: !textLike,
     };
   } catch (err) {
-    return { statusCode: 500, body: String(err?.message || err) };
+    return {
+      statusCode: 500,
+      body: String(err && err.message ? err.message : err),
+    };
   }
-}
+};
