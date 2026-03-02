@@ -3,18 +3,36 @@
   functions = "functions"
 
 # ----------------------------------------------------
-# PAGES: let Netlify serve your main HTML
+# Scramjet static passthrough (served by Netlify)
 # ----------------------------------------------------
 
-# Home page (and SPA entry if you want)
+# Everything under /scramjet/* comes from the scramjet folder in the repo
 [[redirects]]
-  from = "/"
-  to   = "/index.html"
+  from = "/scramjet/*"
+  to   = "/scramjet/:splat"
+  status = 200
+
+# Map /scram/* -> /scramjet/scram/*
+[[redirects]]
+  from = "/scram/*"
+  to   = "/scramjet/scram/:splat"
+  status = 200
+
+# Map /baremux/* -> /scramjet/baremux/*
+[[redirects]]
+  from = "/baremux/*"
+  to   = "/scramjet/baremux/:splat"
+  status = 200
+
+# Map /libcurl/* -> /scramjet/libcurl/*
+[[redirects]]
+  from = "/libcurl/*"
+  to   = "/scramjet/libcurl/:splat"
   status = 200
 
 # ----------------------------------------------------
-# EVERYTHING ELSE -> function, which will redirect to
-# the URL from page_link.txt
+# Everything else gets handled by the proxy function,
+# which uses page_link.txt to find the real origin.
 # ----------------------------------------------------
 
 [[redirects]]
