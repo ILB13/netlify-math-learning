@@ -2,33 +2,20 @@
   publish = "."
   functions = "functions"
 
-# --- Scramjet static passthrough ---
+# ----------------------------------------------------
+# PAGES: let Netlify serve your main HTML
+# ----------------------------------------------------
 
-# /scramjet/* is served directly from the scramjet folder
+# Home page (and SPA entry if you want)
 [[redirects]]
-  from = "/scramjet/*"
-  to   = "/scramjet/:splat"
+  from = "/"
+  to   = "/index.html"
   status = 200
 
-# /scram/* -> physical /scramjet/scram/*
-[[redirects]]
-  from = "/scram/*"
-  to   = "/scramjet/scram/:splat"
-  status = 200
-
-# /baremux/* -> physical /scramjet/baremux/*
-[[redirects]]
-  from = "/baremux/*"
-  to   = "/scramjet/baremux/:splat"
-  status = 200
-
-# /libcurl/* -> physical /scramjet/libcurl/*
-[[redirects]]
-  from = "/libcurl/*"
-  to   = "/scramjet/libcurl/:splat"
-  status = 200
-
-# --- Everything else gets proxied to the tunnel via the function ---
+# ----------------------------------------------------
+# EVERYTHING ELSE -> function, which will redirect to
+# the URL from page_link.txt
+# ----------------------------------------------------
 
 [[redirects]]
   from = "/*"
