@@ -56,13 +56,13 @@ function isTextLike(contentType) {
  *
  * netlify.toml redirects all non-Scramjet paths:
  *   /* -> /.netlify/functions/proxy
- * so event.path is the original URL path (/, /presence/..., etc).
+ * so event.path is the original URL path (/, /celeste/_framework/..., etc).
  */
 exports.handler = async function (event) {
   try {
     const upstreamBase = await getUpstreamBase();
 
-    // Original requested path on the site, e.g. "/", "/presence/ping"
+    // Original requested path on the site, e.g. "/", "/celeste/_framework/data/dataaa.data"
     const path = event.path || "/";
 
     // Rebuild query string from Netlify's queryStringParameters
@@ -83,7 +83,7 @@ exports.handler = async function (event) {
     delete headers["x-forwarded-host"];
     delete headers["x-forwarded-proto"];
     delete headers["x-nf-client-connection-ip"];
-    delete headers["content-length"]; // Netlify will set this itself
+    delete headers["content-length"]; // Netlify recalculates this
 
     // Prepare body (handle base64-encoded body from Netlify)
     let body = undefined;
@@ -106,8 +106,12 @@ exports.handler = async function (event) {
     // Copy response headers
     const respHeaders = {};
     resp.headers.forEach((value, key) => {
-      respHeaders[key] = value;
+      respHeaders[key.toLowerCase()] = value;
     });
+
+    // We are changing the body (text ↔ base64), so these **must** go
+    delete respHeaders["content-length"];
+    delete respHeaders["transfer-encoding"];
 
     // Avoid cached tunnel responses
     respHeaders["cache-control"] = "no-store, max-age=0";
@@ -131,9 +135,15 @@ exports.handler = async function (event) {
       isBase64Encoded: !textLike,
     };
   } catch (err) {
+    // Bubble the error back so you can see it in the browser/network tab
+    const message = String(err && err.message ? err.message : err);
     return {
       statusCode: 500,
-      body: String(err && err.message ? err.message : err),
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-store, max-age=0",
+      },
+      body: JSON.stringify({ error: message }),
     };
   }
 };
