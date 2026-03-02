@@ -20,35 +20,12 @@ async function getUpstreamBase() {
   }
 
   const base = (await res.text()).trim().replace(/\/+$/, "");
-  if (!base.startsWith("https://")) {
-    throw new Error("Invalid app tunnel URL");
-  }
 
+  // IMPORTANT: do NOT enforce https here – link.txt might return http://
+  // We'll just trust whatever it gives us.
   cachedBase = base;
   cachedAt = now;
   return base;
-}
-
-/**
- * Simple "is this probably text" check based on Content-Type.
- * Only safe to use when the response is *not* compressed.
- */
-function isTextLike(contentType) {
-  if (!contentType) return false;
-  contentType = contentType.toLowerCase();
-
-  if (contentType.startsWith("text/")) return true;
-
-  const textTypes = [
-    "application/json",
-    "application/javascript",
-    "application/x-javascript",
-    "application/xml",
-    "application/x-www-form-urlencoded",
-    "image/svg+xml",
-  ];
-
-  return textTypes.some((t) => contentType.startsWith(t));
 }
 
 /**
@@ -56,7 +33,7 @@ function isTextLike(contentType) {
  *
  * netlify.toml redirects all non-Scramjet paths:
  *   /* -> /.netlify/functions/proxy
- * so event.path is the original URL path (/, /celeste/_framework/..., etc).
+ * so event.path is the original URL path (/, /celeste/_framework/data/..., etc).
  */
 exports.handler = async function (event) {
   try {
@@ -109,33 +86,25 @@ exports.handler = async function (event) {
       respHeaders[key.toLowerCase()] = value;
     });
 
-    // We are changing the body (text ↔ base64), so these **must** go
+    // We are re-encoding the body, so these MUST go
     delete respHeaders["content-length"];
     delete respHeaders["transfer-encoding"];
 
     // Avoid cached tunnel responses
     respHeaders["cache-control"] = "no-store, max-age=0";
 
-    const contentType = resp.headers.get("content-type") || "";
-    const contentEncoding = resp.headers.get("content-encoding") || "";
-    const isCompressed =
-      contentEncoding && contentEncoding.toLowerCase() !== "identity";
-
-    // Only treat as text if it's text-like AND not compressed
-    const textLike = isTextLike(contentType) && !isCompressed;
-
-    // Read response body
+    // Read response body as raw bytes
     const arrayBuffer = await resp.arrayBuffer();
     const buf = Buffer.from(arrayBuffer);
 
+    // Always return as base64 so we never corrupt wasm/.data/etc.
     return {
       statusCode: resp.status,
       headers: respHeaders,
-      body: textLike ? buf.toString("utf8") : buf.toString("base64"),
-      isBase64Encoded: !textLike,
+      body: buf.toString("base64"),
+      isBase64Encoded: true,
     };
   } catch (err) {
-    // Bubble the error back so you can see it in the browser/network tab
     const message = String(err && err.message ? err.message : err);
     return {
       statusCode: 500,
