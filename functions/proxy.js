@@ -34,19 +34,24 @@ async function getUpstreamBase() {
 /**
  * Netlify function handler.
  *
- * netlify.toml sends everything except the Scramjet static paths here.
+ * netlify.toml sends everything except the Scramjet static paths here:
+ *   from = "/*"
+ *   to   = "/.netlify/functions/proxy?path=:splat"
  */
 exports.handler = async function (event) {
   try {
     const upstreamBase = await getUpstreamBase();
 
-    // Original requested path, e.g. "/", "/celeste/_framework/data/dataaa.data"
-    const path = event.path || "/";
+    // ORIGINAL PATH comes from ?path=:splat
+    const qs = event.queryStringParameters || {};
+    const { path: originalPathParam, ...restParams } = qs;
 
-    // Rebuild query string from Netlify's queryStringParameters
-    const params = event.queryStringParameters || {};
+    let path = originalPathParam || "/";
+    if (!path.startsWith("/")) path = "/" + path;
+
+    // Rebuild query string WITHOUT the helper "path" param
     const searchParams = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
+    for (const [key, value] of Object.entries(restParams)) {
       if (value != null) searchParams.append(key, value);
     }
     const queryString = searchParams.toString();
@@ -76,8 +81,8 @@ exports.handler = async function (event) {
 
     // ----------------------------------------------------
     // 2) EVERYTHING ELSE:
-    //    Proxy through the function (all fetches, pages, JSON, etc.)
-    //    All of these use the base URL from page_link.txt.
+    //    Proxy through the function (all "normal" fetches/pages),
+    //    using the base URL from page_link.txt.
     // ----------------------------------------------------
 
     // Copy incoming headers but strip hop-by-hop / Netlify-specific ones
@@ -120,7 +125,7 @@ exports.handler = async function (event) {
     // Avoid cached tunnel responses
     respHeaders["cache-control"] = "no-store, max-age=0";
 
-    // Read response body as raw bytes, then send as base64.
+    // Read response body as raw bytes, then send as base64
     const arrayBuffer = await resp.arrayBuffer();
     const buf = Buffer.from(arrayBuffer);
 
