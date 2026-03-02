@@ -1,0 +1,30 @@
+[build]
+  publish = "."
+  functions = "functions"
+
+# Let these folders be served as static files (same idea as context.next()).
+[[redirects]]
+  from = "/scramjet/*"
+  to = "/scramjet/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/scram/*"
+  to = "/scram/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/libcurl/*"
+  to = "/libcurl/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/baremux/*"
+  to = "/baremux/:splat"
+  status = 200
+
+# Catch-all: send everything else to the proxy function.
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/proxy?path=:splat"
+  status = 200
