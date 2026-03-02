@@ -30,8 +30,8 @@ async function getUpstreamBase() {
 }
 
 /**
- * Very simple "is this probably text" check based on Content-Type.
- * Helps decide whether to return utf8 or base64 from the function.
+ * Simple "is this probably text" check based on Content-Type.
+ * Only safe to use when the response is *not* compressed.
  */
 function isTextLike(contentType) {
   if (!contentType) return false;
@@ -56,7 +56,7 @@ function isTextLike(contentType) {
  *
  * netlify.toml redirects all non-Scramjet paths:
  *   /* -> /.netlify/functions/proxy
- * so event.path is the original URL path (/, /presence/..., etc)
+ * so event.path is the original URL path (/, /presence/..., etc).
  */
 exports.handler = async function (event) {
   try {
@@ -83,6 +83,7 @@ exports.handler = async function (event) {
     delete headers["x-forwarded-host"];
     delete headers["x-forwarded-proto"];
     delete headers["x-nf-client-connection-ip"];
+    delete headers["content-length"]; // Netlify will set this itself
 
     // Prepare body (handle base64-encoded body from Netlify)
     let body = undefined;
@@ -112,7 +113,12 @@ exports.handler = async function (event) {
     respHeaders["cache-control"] = "no-store, max-age=0";
 
     const contentType = resp.headers.get("content-type") || "";
-    const textLike = isTextLike(contentType);
+    const contentEncoding = resp.headers.get("content-encoding") || "";
+    const isCompressed =
+      contentEncoding && contentEncoding.toLowerCase() !== "identity";
+
+    // Only treat as text if it's text-like AND not compressed
+    const textLike = isTextLike(contentType) && !isCompressed;
 
     // Read response body
     const arrayBuffer = await resp.arrayBuffer();
