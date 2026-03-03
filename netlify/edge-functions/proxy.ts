@@ -6,17 +6,15 @@ let cachedBase: string | null = null;
 let cachedAt = 0;
 const CACHE_MS = 10_000;
 
-// Serve these from Netlify (repo/static), NOT proxied.
-// IMPORTANT: include service worker + bare-mux related endpoints so they install/boot locally.
+// Anything in here is served locally (NOT proxied).
+// Keep scramjet + bare-mux + service worker files local.
 const STATIC_BYPASS = [
-  // scramjet/bare-mux static folders
   "/scramjet",
   "/scram/",
   "/libcurl/",
   "/baremux/",
   "/bare-mux/",
 
-  // service worker + related files (commonly required for bare-mux stacks)
   "/sw.js",
   "/sw.js.map",
   "/service-worker.js",
@@ -39,19 +37,49 @@ async function getUpstreamBase(): Promise<string> {
   return base;
 }
 
+function withRequiredHeaders(reqUrl: URL, res: Response): Response {
+  const h = new Headers(res.headers);
+
+  // Don’t cache (matches your Pages behavior)
+  h.set("cache-control", "no-store, max-age=0");
+
+  // ✅ Required for SharedWorker/SAB-style stacks (bare-mux often needs this)
+  h.set("Cross-Origin-Opener-Policy", "same-origin");
+
+  // Try credentialless first (less painful for assets).
+  // If something breaks, change to "require-corp".
+  h.set("Cross-Origin-Embedder-Policy", "credentialless");
+
+  // Helpful additions for isolation / consistency
+  h.set("Cross-Origin-Resource-Policy", "same-origin");
+  h.set("Origin-Agent-Cluster", "?1");
+
+  // If this is the service worker script, allow wide scope
+  if (reqUrl.pathname === "/sw.js" || reqUrl.pathname === "/service-worker.js") {
+    h.set("Service-Worker-Allowed", "/");
+    // Ensure it's treated as JS (avoids weird MIME issues)
+    if (!h.get("content-type")) {
+      h.set("content-type", "application/javascript; charset=utf-8");
+    }
+  }
+
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: h,
+  });
+}
+
 export default async function handler(request: Request, context: any) {
   const url = new URL(request.url);
   const path = url.pathname;
 
-  // ✅ Bypass (serve locally)
-  const bypass = STATIC_BYPASS.some(
-    (prefix) => path === prefix || path.startsWith(prefix),
-  );
+  const bypass = STATIC_BYPASS.some((p) => path === p || path.startsWith(p));
   if (bypass) {
-    return context.next();
+    const res = await context.next();
+    return withRequiredHeaders(url, res);
   }
 
-  // ✅ Proxy everything else
   const upstreamBase = await getUpstreamBase();
   const upstreamUrl = upstreamBase + path + url.search;
 
@@ -68,30 +96,28 @@ export default async function handler(request: Request, context: any) {
     redirect: "manual",
   });
 
-  const respHeaders = new Headers(resp.headers);
-
-  // Same behavior as your Cloudflare snippet
-  respHeaders.set("cache-control", "no-store, max-age=0");
-
-  // Optional: keep redirects on your Netlify domain (helps some apps)
-  // If you don't want this, you can delete this block.
-  const loc = respHeaders.get("location");
+  // Rewrite upstream redirects back onto your Netlify domain (optional but often helps)
+  const outHeaders = new Headers(resp.headers);
+  const loc = outHeaders.get("location");
   if (loc) {
     try {
-      const upstream = new URL(upstreamBase);
       const resolved = new URL(loc, upstreamBase);
-      if (resolved.origin === upstream.origin) {
+      const up = new URL(upstreamBase);
+      if (resolved.origin === up.origin) {
         resolved.protocol = url.protocol;
         resolved.host = url.host;
-        respHeaders.set("location", resolved.toString());
+        outHeaders.set("location", resolved.toString());
       }
     } catch {
-      // ignore invalid location headers
+      // ignore
     }
   }
 
-  return new Response(resp.body, {
+  const out = new Response(resp.body, {
     status: resp.status,
-    headers: respHeaders,
+    statusText: resp.statusText,
+    headers: outHeaders,
   });
+
+  return withRequiredHeaders(url, out);
 }
