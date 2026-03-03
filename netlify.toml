@@ -1,0 +1,6 @@
+[build]
+  publish = "dist" # or your publish folder
+
+[[edge_functions]]
+  function = "proxy"
+  path = "/*"
