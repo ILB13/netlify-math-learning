@@ -1,0 +1,12 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Optional: keep deploy headers small and avoid caching proxied responses
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-store"
