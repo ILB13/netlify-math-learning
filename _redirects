@@ -1,0 +1,21 @@
+# Serve the UI + static assets directly
+/                       /index.html                200
+/index.html             /index.html                200
+/index.js               /index.js                  200
+/index.css              /index.css                 200
+/sw.js                  /sw.js                     200
+/register-sw.js         /register-sw.js            200
+/search.js              /search.js                 200
+/config.js              /config.js                 200
+/404.html               /404.html                  200
+/credits.html           /credits.html              200
+/favicon.ico            /favicon.ico               200
+/sj.png                 /sj.png                    200
+
+# Static directories
+/scram/*                /scram/:splat              200
+/libcurl/*              /libcurl/:splat            200
+/baremux/*              /baremux/:splat            200
+
+# Everything else proxies through the Netlify Function
+/*                      /.netlify/functions/proxy/:splat  200
