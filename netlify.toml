@@ -2,11 +2,62 @@
   publish = "."
   functions = "functions"
 
-# Everything goes to the proxy function.
-# We pass the original path in ?path=:splat so the function knows
-# what the browser actually requested.
+# ------------------------------------------
+# ROUTES THAT SHOULD GO VIA page_link.txt
+# (all "fetches" and game stuff)
+# ------------------------------------------
+
+# Celeste game assets and pages
 [[redirects]]
-  from = "/*"
-  to   = "/.netlify/functions/proxy?path=:splat"
+  from = "/celeste/*"
+  to   = "/.netlify/functions/proxy?path=celeste/:splat"
   status = 200
   force = true
+
+# Scramjet core
+[[redirects]]
+  from = "/scramjet/*"
+  to   = "/.netlify/functions/proxy?path=scramjet/:splat"
+  status = 200
+  force = true
+
+# Scram routes
+[[redirects]]
+  from = "/scram/*"
+  to   = "/.netlify/functions/proxy?path=scram/:splat"
+  status = 200
+  force = true
+
+# Baremux
+[[redirects]]
+  from = "/baremux/*"
+  to   = "/.netlify/functions/proxy?path=baremux/:splat"
+  status = 200
+  force = true
+
+# libcurl worker
+[[redirects]]
+  from = "/libcurl/*"
+  to   = "/.netlify/functions/proxy?path=libcurl/:splat"
+  status = 200
+  force = true
+
+# Presence / API endpoint
+[[redirects]]
+  from = "/presence/*"
+  to   = "/.netlify/functions/proxy?path=presence/:splat"
+  status = 200
+  force = true
+
+# ------------------------------------------
+# EVERYTHING ELSE = NORMAL NETLIFY PAGES
+# (homepage + simple HTML)
+# ------------------------------------------
+
+# SPA-style fallback: pages like /about, /foo, etc
+# still serve your index.html instead of going
+# through the function.
+[[redirects]]
+  from = "/*"
+  to   = "/index.html"
+  status = 200
